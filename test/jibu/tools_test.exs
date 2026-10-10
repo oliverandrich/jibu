@@ -90,6 +90,14 @@ defmodule Jibu.ToolsTest do
     assert length(messages) == 4
   end
 
+  # A tool that sleeps for the milliseconds in its `delay` input.
+  defp delay_tool do
+    weather_tool(fn %{"delay" => delay} ->
+      Process.sleep(delay)
+      {:ok, "waited #{delay}"}
+    end)
+  end
+
   # A tool that waits up to one second for `count` tools to start. Run alone, it reports an error.
   defp barrier_tool(count) do
     started = :counters.new(1, [])
@@ -143,25 +151,30 @@ defmodule Jibu.ToolsTest do
            ] = sent_results()
   end
 
-  test "rejects an invalid max_concurrency before the first request" do
+  test "rejects an invalid max_concurrency or tool_timeout before the first request" do
     body = %{tools: [weather_tool(fn _input -> {:ok, "x"} end)], messages: []}
 
-    assert_raise FunctionClauseError, fn ->
-      Tools.run(client(__MODULE__), body, max_concurrency: 0)
+    for opts <- [[max_concurrency: 0], [tool_timeout: 0]] do
+      assert_raise FunctionClauseError, fn -> Tools.run(client(__MODULE__), body, opts) end
     end
 
     refute_received {:body, _}
   end
 
-  test "a prompt takes max_concurrency as a loop option" do
+  test "a prompt takes max_concurrency and tool_timeout as loop options" do
     calls = [tool_use("t1", "weather", %{}), tool_use("t2", "weather", %{})]
     script([reply(calls, "tool_use"), reply([], "end_turn")])
 
     assert {:ok, _response, _messages} =
-             Tools.run(client(__MODULE__), "x", tools: [barrier_tool(2)], max_concurrency: 2)
+             Tools.run(client(__MODULE__), "x",
+               tools: [barrier_tool(2)],
+               max_concurrency: 2,
+               tool_timeout: 5000
+             )
 
     assert_received {:body, first}
     refute Map.has_key?(first, "max_concurrency")
+    refute Map.has_key?(first, "tool_timeout")
     assert_received {:body, second}
 
     assert [%{"content" => "together"}, %{"content" => "together"}] =
@@ -176,13 +189,7 @@ defmodule Jibu.ToolsTest do
 
     script([reply(calls, "tool_use"), reply([], "end_turn")])
 
-    tool =
-      weather_tool(fn %{"delay" => delay} ->
-        Process.sleep(delay)
-        {:ok, "waited #{delay}"}
-      end)
-
-    body = %{tools: [tool], messages: [%{role: "user", content: "x"}]}
+    body = %{tools: [delay_tool()], messages: [%{role: "user", content: "x"}]}
 
     assert {:ok, _response, _messages} =
              Tools.run(client(__MODULE__), body, max_concurrency: 2)
@@ -191,6 +198,66 @@ defmodule Jibu.ToolsTest do
              %{"tool_use_id" => "t1", "content" => "waited 50"},
              %{"tool_use_id" => "t2", "content" => "waited 0"}
            ] = sent_results()
+  end
+
+  test "a tool that exceeds tool_timeout returns an error result" do
+    calls = [
+      tool_use("t1", "weather", %{"delay" => 500}),
+      tool_use("t2", "weather", %{"delay" => 0})
+    ]
+
+    body = %{tools: [delay_tool()], messages: [%{role: "user", content: "x"}]}
+
+    for max_concurrency <- [1, 2] do
+      script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+      assert {:ok, _response, _messages} =
+               Tools.run(client(__MODULE__), body,
+                 tool_timeout: 50,
+                 max_concurrency: max_concurrency
+               )
+
+      assert [
+               %{
+                 "tool_use_id" => "t1",
+                 "is_error" => true,
+                 "content" => "tool timed out after 50 ms"
+               },
+               %{"tool_use_id" => "t2", "content" => "waited 0"}
+             ] = sent_results()
+    end
+  end
+
+  test "a tool's exit reaches a caller that traps exits" do
+    Process.flag(:trap_exit, true)
+    script([reply([tool_use("t1", "weather", %{})], "tool_use")])
+    body = %{tools: [weather_tool(fn _input -> exit(:boom) end)], messages: []}
+
+    assert catch_exit(Tools.run(client(__MODULE__), body, tool_timeout: 1000)) == :boom
+  end
+
+  test "tool_timeout limits each tool, not the whole turn" do
+    calls = [
+      tool_use("t1", "weather", %{"delay" => 300}),
+      tool_use("t2", "weather", %{"delay" => 300})
+    ]
+
+    script([reply(calls, "tool_use"), reply([], "end_turn")])
+    body = %{tools: [delay_tool()], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} = Tools.run(client(__MODULE__), body, tool_timeout: 500)
+    assert [%{"content" => "waited 300"}, %{"content" => "waited 300"}] = sent_results()
+  end
+
+  test "tool_timeout runs tools outside the calling process" do
+    test_pid = self()
+    script([reply([tool_use("t1", "weather", %{})], "tool_use"), reply([], "end_turn")])
+
+    tool = weather_tool(fn _input -> {:ok, inspect(self() == test_pid)} end)
+    body = %{tools: [tool], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} = Tools.run(client(__MODULE__), body, tool_timeout: 1000)
+    assert [%{"content" => "false"}] = sent_results()
   end
 
   test "a failing, raising or unknown tool returns an error result to the model" do

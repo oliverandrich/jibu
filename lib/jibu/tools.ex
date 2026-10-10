@@ -54,7 +54,10 @@ defmodule Jibu.Tools do
 
     * `:max_iterations` - maximum number of requests, default `10`.
     * `:max_concurrency` - maximum number of tools of one turn that run at once, default `1`.
-      Above `1`, each tool runs in its own task without a timeout.
+    * `:tool_timeout` - milliseconds a tool may run, default `:infinity`.
+      A tool that exceeds it is killed and returns an error result.
+
+  With `:max_concurrency` above `1` or a finite `:tool_timeout`, each tool runs in its own task.
   """
   @spec run(Req.Request.t(), map() | String.t() | [map()], keyword()) ::
           {:ok, Response.t(), [map()]} | {:error, Error.t()}
@@ -65,7 +68,9 @@ defmodule Jibu.Tools do
       raise ArgumentError, "pass a request body as a map, not a keyword list"
     end
 
-    {loop_opts, prompt_opts} = Keyword.split(opts, [:max_iterations, :max_concurrency])
+    {loop_opts, prompt_opts} =
+      Keyword.split(opts, [:max_iterations, :max_concurrency, :tool_timeout])
+
     run(client, Prompt.body(prompt, prompt_opts), loop_opts)
   end
 
@@ -82,7 +87,14 @@ defmodule Jibu.Tools do
         else: Map.put(body, tools_key, Enum.map(tools, &Map.drop(&1, [:run, "run"])))
 
     send = fn messages -> Jibu.messages(client, Map.put(body, messages_key, messages)) end
-    execute = executor(runners, Keyword.get(opts, :max_concurrency, 1))
+
+    execute =
+      executor(
+        runners,
+        Keyword.get(opts, :max_concurrency, 1),
+        Keyword.get(opts, :tool_timeout, :infinity)
+      )
+
     loop(send, execute, messages, Keyword.get(opts, :max_iterations, 10))
   end
 
@@ -114,19 +126,26 @@ defmodule Jibu.Tools do
     {:error, %Error{type: "max_iterations", message: "the tool loop reached :max_iterations"}}
   end
 
-  # Without concurrency, tools run in the caller and share its process.
-  defp executor(runners, 1),
+  # Without concurrency or timeout, tools run in the caller and share its process.
+  defp executor(runners, 1, :infinity),
     do: &Enum.map(&1, fn call -> result(call, outcome(call, runners)) end)
 
-  defp executor(runners, max_concurrency)
-       when is_integer(max_concurrency) and max_concurrency > 1 do
+  defp executor(runners, max_concurrency, timeout)
+       when is_integer(max_concurrency) and max_concurrency > 0 and
+              (timeout == :infinity or (is_integer(timeout) and timeout > 0)) do
     fn calls ->
       calls
       |> Task.async_stream(&outcome(&1, runners),
         max_concurrency: max_concurrency,
-        timeout: :infinity
+        timeout: timeout,
+        on_timeout: :kill_task
       )
-      |> Enum.zip_with(calls, fn {:ok, outcome}, call -> result(call, outcome) end)
+      |> Enum.zip_with(calls, fn
+        {:ok, outcome}, call -> result(call, outcome)
+        {:exit, :timeout}, call -> result(call, {:error, "tool timed out after #{timeout} ms"})
+        # With trapped exits, async_stream returns a crashed tool's exit instead of propagating it.
+        {:exit, reason}, _call -> exit(reason)
+      end)
     end
   end
 

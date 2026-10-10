@@ -78,7 +78,21 @@ Jibu.Tools.run(client, body, max_concurrency: 4)
 
 Each tool then runs in its own task, so `self()` and the process dictionary differ from the caller.
 Tools may start and finish in any order. Their results keep the order of the tool calls.
-Tasks have no timeout. An exit or throw in a tool crashes the caller.
+An exit or throw in a tool crashes the caller.
+
+## Timeouts
+
+Tools run without a time limit by default.
+`:tool_timeout` limits each tool to that many milliseconds.
+
+```elixir
+Jibu.Tools.run(client, body, tool_timeout: 5_000)
+```
+
+A tool that exceeds it is killed and returns `"tool timed out after 5000 ms"` with `is_error: true`.
+Side effects it started may be left incomplete.
+A finite timeout runs each tool in its own task, also with `max_concurrency: 1`.
+The notes under [Concurrency](#concurrency) on processes, exits and throws then apply.
 
 ## Server tools
 
