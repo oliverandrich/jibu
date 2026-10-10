@@ -36,6 +36,23 @@ defmodule Jibu.TestHelpers do
     end)
   end
 
+  @doc """
+  Forwards the telemetry `events` of the calling process as `{event, ref, measurements, metadata}`.
+  Other async tests emit the same events, so other processes are ignored. Returns `ref`.
+  """
+  def attach_telemetry(events) do
+    ref = make_ref()
+    test_pid = self()
+
+    handler = fn event, measurements, metadata, _config ->
+      if self() == test_pid, do: send(test_pid, {event, ref, measurements, metadata})
+    end
+
+    :telemetry.attach_many(ref, events, handler, nil)
+    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(ref) end)
+    ref
+  end
+
   @doc "Encodes events as a Server-Sent Events stream, named by their `type`."
   def sse(events) do
     for event <- events, into: "", do: "event: #{event["type"]}\ndata: #{JSON.encode!(event)}\n\n"

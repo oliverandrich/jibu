@@ -160,20 +160,13 @@ defmodule Jibu.StreamTest do
   end
 
   test "reports the usage of the assembled message in the telemetry span" do
-    ref = make_ref()
-    test_pid = self()
-    # Other async tests emit spans too; keep only those from this process.
-    handler = fn _name, _measurements, metadata, _config ->
-      if self() == test_pid, do: send(test_pid, {ref, metadata})
-    end
-
-    :telemetry.attach("#{inspect(ref)}", [:jibu, :request, :stop], handler, nil)
-    on_exit(fn -> :telemetry.detach("#{inspect(ref)}") end)
+    ref = attach_telemetry([[:jibu, :request, :stop]])
 
     stream_stub(sse(@events))
     assert {:ok, _response} = Jibu.stream(client(__MODULE__), %{model: "m"}, fn _event -> :ok end)
 
-    assert_received {^ref, %{status: 200, usage: %{"output_tokens" => 5}}}
+    assert_received {[:jibu, :request, :stop], ^ref, _measurements, %{status: 200} = stop}
+    assert stop.usage == %{"input_tokens" => 10, "output_tokens" => 5}
   end
 
   # A Req adapter that streams the test's events, then fails like a closed connection.

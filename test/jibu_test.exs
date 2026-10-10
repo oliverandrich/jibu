@@ -110,11 +110,7 @@ defmodule JibuTest do
     end
 
     test "emits a telemetry span with model, status and usage" do
-      ref =
-        :telemetry_test.attach_event_handlers(self(), [
-          [:jibu, :request, :start],
-          [:jibu, :request, :stop]
-        ])
+      ref = attach_telemetry([[:jibu, :request, :start], [:jibu, :request, :stop]])
 
       Req.Test.stub(__MODULE__, &Req.Test.json(&1, @message))
 
