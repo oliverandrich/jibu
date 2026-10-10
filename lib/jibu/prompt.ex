@@ -4,7 +4,12 @@ defmodule Jibu.Prompt do
   # Builds a Messages body from a prompt and keyword shortcuts.
   # `system:`, `cache:`, `effort:` and `messages:` have a fixed meaning.
   # Every other keyword becomes a body field unchanged.
+  # `ask/3` removes `on_text:` first. Elsewhere a function would reach the JSON encoder.
   def body(prompt, opts) do
+    if Keyword.has_key?(opts, :on_text) do
+      raise ArgumentError, "on_text: works only with Jibu.ask/3; use Jibu.stream/3 or on_event:"
+    end
+
     {system, opts} = Keyword.pop(opts, :system)
     {cache?, opts} = Keyword.pop(opts, :cache, false)
     {effort, opts} = Keyword.pop(opts, :effort)

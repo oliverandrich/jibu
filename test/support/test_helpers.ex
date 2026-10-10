@@ -120,6 +120,13 @@ defmodule Jibu.TestHelpers do
     ]
   end
 
+  @doc "Answers `conn` with `events` as an event stream."
+  def send_sse(conn, events) do
+    conn
+    |> Plug.Conn.put_resp_content_type("text/event-stream")
+    |> Plug.Conn.send_resp(200, sse(events))
+  end
+
   @doc "Asserts that the raw request body is the JSON encoding of `body`."
   def assert_sent_body(raw, body),
     do: assert(JSON.decode!(raw) == JSON.decode!(JSON.encode!(body)))

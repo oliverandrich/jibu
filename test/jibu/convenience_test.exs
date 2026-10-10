@@ -140,6 +140,70 @@ defmodule Jibu.ConvenienceTest do
       Req.Test.stub(__MODULE__, &api_error(&1, 400, "invalid_request_error"))
       assert {:error, %Error{status: 400}} = Jibu.ask(defaults_client(), "x")
     end
+
+    test "on_text streams the answer and passes only the text deltas" do
+      message = %{
+        "content" => [
+          %{"type" => "thinking", "thinking" => "", "signature" => ""},
+          %{"type" => "text", "text" => "Rhine, "},
+          %{"type" => "text", "text" => "Elbe"}
+        ],
+        "stop_reason" => "end_turn"
+      }
+
+      thinking = %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "thinking_delta", "thinking" => "hidden"}
+      }
+
+      [start, thinking_start | rest] = stream_events(message)
+      capture(__MODULE__, &send_sse(&1, [start, thinking_start, thinking | rest]))
+
+      test_pid = self()
+      on_text = &send(test_pid, {:text, &1})
+
+      assert Jibu.ask(defaults_client(), "Name two rivers.", on_text: on_text) ==
+               {:ok, "Rhine, Elbe"}
+
+      body = sent_body()
+      assert body["stream"] == true
+      refute Map.has_key?(body, "on_text")
+      assert_received {:text, "Rhine, "}
+      assert_received {:text, "Elbe"}
+      refute_received {:text, _other}
+    end
+
+    test "on_text keeps a refusal an error" do
+      refusal = %{"content" => [%{"type" => "text", "text" => "No"}], "stop_reason" => "refusal"}
+      capture(__MODULE__, &send_sse(&1, stream_events(refusal)))
+
+      test_pid = self()
+
+      assert {:error, %Error{type: "refusal"}} =
+               Jibu.ask(defaults_client(), "x", on_text: &send(test_pid, {:text, &1}))
+
+      # The function sees the text before the stop reason turns it into an error.
+      assert_received {:text, "No"}
+    end
+
+    test "rejects an on_text that is not a function of one argument before the request" do
+      assert_raise ArgumentError, ~r/on_text/, fn ->
+        Jibu.ask(defaults_client(), "x", on_text: false)
+      end
+
+      refute_received {:request, _conn, _raw}
+    end
+
+    test "extract/4 and the tool loop reject on_text" do
+      assert_raise ArgumentError, ~r/on_text/, fn ->
+        Jibu.extract(defaults_client(), "x", %{type: "object"}, on_text: fn _text -> :ok end)
+      end
+
+      assert_raise ArgumentError, ~r/on_text/, fn ->
+        Jibu.Tools.run(defaults_client(), "x", on_text: fn _text -> :ok end)
+      end
+    end
   end
 
   describe "extract/4" do

@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `Jibu.Tools.run/3` limits the run time of each tool with `tool_timeout:`.
 - `Jibu.stream/3` streams a Messages response to a function and returns the assembled message.
 - `Jibu.Tools.run/3` streams every turn to a function with `on_event:`.
+- `Jibu.ask/3` streams the answer to a function with `on_text:`.
 - `Jibu.Error` carries the conversation so far in `messages` when `Jibu.Tools.run/3` fails.
 
 ## [0.1.1] - 2026-10-10

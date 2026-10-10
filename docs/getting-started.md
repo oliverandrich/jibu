@@ -48,6 +48,7 @@ These shortcuts have a fixed meaning:
 - `system:` sets the system prompt. `cache: true` marks it for [prompt caching](prompt-caching.md).
 - `effort:` sets `output_config.effort`.
 - `messages:` passes an earlier conversation. The prompt is appended to it.
+- `on_text:` streams the answer and passes each piece of text to a function. See below.
 
 Every other keyword becomes a body field unchanged.
 
@@ -66,6 +67,18 @@ Every other keyword becomes a body field unchanged.
 
 A refusal and output cut off at `max_tokens` return `{:error, %Jibu.Error{}}`.
 So does a turn that waits for a tool. Use [Tools](tools.md) for those.
+
+`on_text:` shows the answer while it arrives, for example in a LiveView:
+
+```elixir
+pid = self()
+{:ok, text} = Jibu.ask(client, "Write a haiku.", on_text: &send(pid, {:text, &1}))
+```
+
+The function sees the text before `ask/3` knows whether the answer succeeded.
+After a refusal, `max_tokens`, an error event or a lost connection, it may already have received text.
+`ask/3` then returns the error.
+For every stream event, use [`Jibu.stream/3`](streaming.md).
 
 ## Send a full request
 

@@ -241,6 +241,8 @@ defmodule Jibu do
     * `:cache` - `true` marks the system prompt for prompt caching.
     * `:effort` - sets `output_config.effort`, for example `:low`.
     * `:messages` - an earlier conversation; `prompt` is appended to it.
+    * `:on_text` - a function that receives each piece of text as it streams in.
+      The answer then goes through `stream/3`.
 
   Every other keyword becomes a body field unchanged, for example `temperature: 0`.
 
@@ -250,7 +252,9 @@ defmodule Jibu do
   @spec ask(Req.Request.t(), String.t() | [map()], keyword()) ::
           {:ok, String.t()} | {:error, Error.t()}
   def ask(client, prompt, opts \\ []) do
-    with {:ok, response} <- messages(client, Prompt.body(prompt, opts)) do
+    {on_text, opts} = Keyword.pop(opts, :on_text)
+
+    with {:ok, response} <- send_prompt(client, Prompt.body(prompt, opts), on_text) do
       case Response.stop_error(response) do
         nil -> {:ok, Response.text(response)}
         error -> {:error, error}
@@ -258,10 +262,28 @@ defmodule Jibu do
     end
   end
 
+  defp send_prompt(client, body, nil), do: messages(client, body)
+
+  defp send_prompt(client, body, on_text) when is_function(on_text, 1),
+    do: stream(client, body, &forward_text(&1, on_text))
+
+  defp send_prompt(_client, _body, on_text),
+    do:
+      raise(
+        ArgumentError,
+        "on_text: must be a function of one argument, got: #{inspect(on_text)}"
+      )
+
+  defp forward_text(%{"delta" => %{"type" => "text_delta", "text" => text}}, on_text),
+    do: on_text.(text)
+
+  defp forward_text(_event, _on_text), do: :ok
+
   @doc """
   Sends `prompt` with `schema` as structured output and returns the decoded JSON.
 
-  Takes the same shortcuts as `ask/3`. See the [structured output guide](structured-output.md).
+  Takes the shortcuts of `ask/3` except `:on_text`.
+  See the [structured output guide](structured-output.md).
   """
   @spec extract(Req.Request.t(), String.t() | [map()], map(), keyword()) ::
           {:ok, term()} | {:error, Error.t()}

@@ -27,11 +27,7 @@ defmodule Jibu.ToolsTest do
 
   defp stream_script(replies), do: script(replies, &respond_stream/2)
 
-  defp respond_stream(conn, reply) do
-    conn
-    |> Plug.Conn.put_resp_content_type("text/event-stream")
-    |> Plug.Conn.send_resp(200, sse(stream_events(reply)))
-  end
+  defp respond_stream(conn, reply), do: send_sse(conn, stream_events(reply))
 
   defp forward do
     test_pid = self()

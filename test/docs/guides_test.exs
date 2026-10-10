@@ -122,9 +122,7 @@ defmodule Jibu.GuidesTest do
       %{"type" => "message_stop"}
     ]
 
-    conn
-    |> Plug.Conn.put_resp_content_type("text/event-stream")
-    |> Plug.Conn.send_resp(200, Jibu.TestHelpers.sse(events))
+    Jibu.TestHelpers.send_sse(conn, events)
   end
 
   defp route(conn, "POST", ["v1", "messages"], body), do: Req.Test.json(conn, message(body))

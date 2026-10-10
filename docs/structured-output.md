@@ -17,7 +17,7 @@ schema = %{
 {:ok, booking} = Jibu.extract(client, "Workshop with MRV, 9 to 11:30.", schema, effort: :low)
 ```
 
-`Jibu.extract/4` takes the shortcuts of `Jibu.ask/3` and returns the decoded JSON.
+`Jibu.extract/4` takes the shortcuts of `Jibu.ask/3` except `on_text:` and returns the decoded JSON.
 
 ## Use the full request
 

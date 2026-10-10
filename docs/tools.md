@@ -37,7 +37,7 @@ It returns `{:ok, content}` or `{:error, content}`.
   })
 ```
 
-A prompt works as well, with the shortcuts of `Jibu.ask/3`:
+A prompt works as well, with the shortcuts of `Jibu.ask/3` except `on_text:`:
 
 ```elixir
 {:ok, response, messages} =

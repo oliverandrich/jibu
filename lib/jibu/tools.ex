@@ -44,7 +44,8 @@ defmodule Jibu.Tools do
   Runs the loop.
 
   The second argument is a request body or a prompt. A prompt takes the shortcuts of
-  `Jibu.ask/3`, and `tools:` goes into the body like any other keyword.
+  `Jibu.ask/3` except `:on_text`. Use `:on_event` to stream.
+  `tools:` goes into the body like any other keyword.
 
   Returns `{:ok, response, messages}` for the first response whose `stop_reason` is neither
   `"tool_use"` nor `"pause_turn"`. Check that `stop_reason` for `"refusal"` or `"max_tokens"`
