@@ -53,6 +53,8 @@ defmodule Jibu.Tools do
   ## Options
 
     * `:max_iterations` - maximum number of requests, default `10`.
+    * `:max_concurrency` - maximum number of tools of one turn that run at once, default `1`.
+      Above `1`, each tool runs in its own task without a timeout.
   """
   @spec run(Req.Request.t(), map() | String.t() | [map()], keyword()) ::
           {:ok, Response.t(), [map()]} | {:error, Error.t()}
@@ -63,7 +65,7 @@ defmodule Jibu.Tools do
       raise ArgumentError, "pass a request body as a map, not a keyword list"
     end
 
-    {loop_opts, prompt_opts} = Keyword.split(opts, [:max_iterations])
+    {loop_opts, prompt_opts} = Keyword.split(opts, [:max_iterations, :max_concurrency])
     run(client, Prompt.body(prompt, prompt_opts), loop_opts)
   end
 
@@ -80,41 +82,58 @@ defmodule Jibu.Tools do
         else: Map.put(body, tools_key, Enum.map(tools, &Map.drop(&1, [:run, "run"])))
 
     send = fn messages -> Jibu.messages(client, Map.put(body, messages_key, messages)) end
-    loop(send, runners, messages, Keyword.get(opts, :max_iterations, 10))
+    execute = executor(runners, Keyword.get(opts, :max_concurrency, 1))
+    loop(send, execute, messages, Keyword.get(opts, :max_iterations, 10))
   end
 
-  defp loop(_send, _runners, _messages, 0), do: max_iterations()
+  defp loop(_send, _execute, _messages, 0), do: max_iterations()
 
-  defp loop(send, runners, messages, left) do
+  defp loop(send, execute, messages, left) do
     with {:ok, response} <- send.(messages) do
       messages = messages ++ [%{role: "assistant", content: response.content}]
-      continue(response, send, runners, messages, left - 1)
+      continue(response, send, execute, messages, left - 1)
     end
   end
 
   # With no request left, tools do not run: their results could never be sent.
-  defp continue(%Response{stop_reason: reason}, _send, _runners, _messages, 0)
+  defp continue(%Response{stop_reason: reason}, _send, _execute, _messages, 0)
        when reason in ["tool_use", "pause_turn"],
        do: max_iterations()
 
-  defp continue(%Response{stop_reason: "tool_use"} = response, send, runners, messages, left) do
-    results = for %{"type" => "tool_use"} = call <- response.content, do: call(call, runners)
-    loop(send, runners, messages ++ [%{role: "user", content: results}], left)
+  defp continue(%Response{stop_reason: "tool_use"} = response, send, execute, messages, left) do
+    results = execute.(for %{"type" => "tool_use"} = call <- response.content, do: call)
+    loop(send, execute, messages ++ [%{role: "user", content: results}], left)
   end
 
-  defp continue(%Response{stop_reason: "pause_turn"}, send, runners, messages, left),
-    do: loop(send, runners, messages, left)
+  defp continue(%Response{stop_reason: "pause_turn"}, send, execute, messages, left),
+    do: loop(send, execute, messages, left)
 
-  defp continue(response, _send, _runners, messages, _left), do: {:ok, response, messages}
+  defp continue(response, _send, _execute, messages, _left), do: {:ok, response, messages}
 
   defp max_iterations do
     {:error, %Error{type: "max_iterations", message: "the tool loop reached :max_iterations"}}
   end
 
-  defp call(%{"id" => id, "name" => name, "input" => input}, runners) do
+  # Without concurrency, tools run in the caller and share its process.
+  defp executor(runners, 1),
+    do: &Enum.map(&1, fn call -> result(call, outcome(call, runners)) end)
+
+  defp executor(runners, max_concurrency)
+       when is_integer(max_concurrency) and max_concurrency > 1 do
+    fn calls ->
+      calls
+      |> Task.async_stream(&outcome(&1, runners),
+        max_concurrency: max_concurrency,
+        timeout: :infinity
+      )
+      |> Enum.zip_with(calls, fn {:ok, outcome}, call -> result(call, outcome) end)
+    end
+  end
+
+  defp outcome(%{"name" => name, "input" => input}, runners) do
     case Map.fetch(runners, name) do
-      {:ok, run} -> result(id, invoke(run, input))
-      :error -> result(id, {:error, "unknown tool: #{name}"})
+      {:ok, run} -> invoke(run, input)
+      :error -> {:error, "unknown tool: #{name}"}
     end
   end
 
@@ -125,12 +144,13 @@ defmodule Jibu.Tools do
     exception -> {:error, Exception.message(exception)}
   end
 
-  defp result(id, {:ok, content}), do: %{type: "tool_result", tool_use_id: id, content: content}
+  defp result(%{"id" => id}, {:ok, content}),
+    do: %{type: "tool_result", tool_use_id: id, content: content}
 
-  defp result(id, {:error, content}),
+  defp result(%{"id" => id}, {:error, content}),
     do: %{type: "tool_result", tool_use_id: id, content: content, is_error: true}
 
-  defp result(_id, other) do
+  defp result(_call, other) do
     raise ArgumentError,
           "a tool's :run must return {:ok, content} or {:error, content}, got: #{inspect(other)}"
   end

@@ -24,6 +24,13 @@ defmodule Jibu.ToolsTest do
     end
   end
 
+  # The tool results of the second request.
+  defp sent_results do
+    assert_received {:body, _first}
+    assert_received {:body, second}
+    List.last(second["messages"])["content"]
+  end
+
   defp weather_tool(run) do
     %{
       name: "weather",
@@ -83,6 +90,109 @@ defmodule Jibu.ToolsTest do
     assert length(messages) == 4
   end
 
+  # A tool that waits up to one second for `count` tools to start. Run alone, it reports an error.
+  defp barrier_tool(count) do
+    started = :counters.new(1, [])
+
+    weather_tool(fn _input ->
+      :counters.add(started, 1, 1)
+      deadline = System.monotonic_time(:millisecond) + 1000
+      await_barrier(started, count, deadline)
+    end)
+  end
+
+  defp await_barrier(started, count, deadline) do
+    cond do
+      :counters.get(started, 1) >= count ->
+        {:ok, "together"}
+
+      System.monotonic_time(:millisecond) > deadline ->
+        {:error, "alone"}
+
+      true ->
+        Process.sleep(5)
+        await_barrier(started, count, deadline)
+    end
+  end
+
+  test "runs tools one after another in the calling process by default" do
+    test_pid = self()
+    calls = [tool_use("t1", "weather", %{}), tool_use("t2", "weather", %{})]
+    script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+    tool = weather_tool(fn _input -> {:ok, inspect(self() == test_pid)} end)
+    body = %{tools: [tool], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} = Tools.run(client(__MODULE__), body)
+
+    assert [%{"content" => "true"}, %{"content" => "true"}] = sent_results()
+  end
+
+  test "runs the tools of one turn concurrently with max_concurrency" do
+    calls = [tool_use("t1", "weather", %{}), tool_use("t2", "weather", %{})]
+    script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+    body = %{tools: [barrier_tool(2)], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} =
+             Tools.run(client(__MODULE__), body, max_concurrency: 2)
+
+    assert [
+             %{"tool_use_id" => "t1", "content" => "together"},
+             %{"tool_use_id" => "t2", "content" => "together"}
+           ] = sent_results()
+  end
+
+  test "rejects an invalid max_concurrency before the first request" do
+    body = %{tools: [weather_tool(fn _input -> {:ok, "x"} end)], messages: []}
+
+    assert_raise FunctionClauseError, fn ->
+      Tools.run(client(__MODULE__), body, max_concurrency: 0)
+    end
+
+    refute_received {:body, _}
+  end
+
+  test "a prompt takes max_concurrency as a loop option" do
+    calls = [tool_use("t1", "weather", %{}), tool_use("t2", "weather", %{})]
+    script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+    assert {:ok, _response, _messages} =
+             Tools.run(client(__MODULE__), "x", tools: [barrier_tool(2)], max_concurrency: 2)
+
+    assert_received {:body, first}
+    refute Map.has_key?(first, "max_concurrency")
+    assert_received {:body, second}
+
+    assert [%{"content" => "together"}, %{"content" => "together"}] =
+             List.last(second["messages"])["content"]
+  end
+
+  test "keeps the order of tool calls when a later tool finishes first" do
+    calls = [
+      tool_use("t1", "weather", %{"delay" => 50}),
+      tool_use("t2", "weather", %{"delay" => 0})
+    ]
+
+    script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+    tool =
+      weather_tool(fn %{"delay" => delay} ->
+        Process.sleep(delay)
+        {:ok, "waited #{delay}"}
+      end)
+
+    body = %{tools: [tool], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} =
+             Tools.run(client(__MODULE__), body, max_concurrency: 2)
+
+    assert [
+             %{"tool_use_id" => "t1", "content" => "waited 50"},
+             %{"tool_use_id" => "t2", "content" => "waited 0"}
+           ] = sent_results()
+  end
+
   test "a failing, raising or unknown tool returns an error result to the model" do
     script([
       reply(
@@ -107,14 +217,11 @@ defmodule Jibu.ToolsTest do
                messages: [%{role: "user", content: "x"}]
              })
 
-    assert_received {:body, _first}
-    assert_received {:body, second}
-
     assert [
              %{"tool_use_id" => "t1", "is_error" => true, "content" => "service down"},
              %{"tool_use_id" => "t2", "is_error" => true, "content" => "boom"},
              %{"tool_use_id" => "t3", "is_error" => true, "content" => "unknown tool: missing"}
-           ] = List.last(second["messages"])["content"]
+           ] = sent_results()
   end
 
   test "resends after pause_turn without adding a user message" do

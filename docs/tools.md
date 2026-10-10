@@ -67,6 +67,19 @@ Jibu.Tools.run(client, body, max_iterations: 4)
 
 Reaching the cap returns `{:error, %Jibu.Error{type: "max_iterations"}}`.
 
+## Concurrency
+
+The tools of one turn run one after another in the calling process by default.
+`:max_concurrency` runs up to that many at once.
+
+```elixir
+Jibu.Tools.run(client, body, max_concurrency: 4)
+```
+
+Each tool then runs in its own task, so `self()` and the process dictionary differ from the caller.
+Tools may start and finish in any order. Their results keep the order of the tool calls.
+Tasks have no timeout. An exit or throw in a tool crashes the caller.
+
 ## Server tools
 
 Tools without `:run`, such as web search, go to the API unchanged.
