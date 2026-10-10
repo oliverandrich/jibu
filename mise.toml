@@ -44,8 +44,8 @@ set -eu
 
 fail() { echo "$1" >&2; exit 1; }
 
-# Read without compiling, so a fresh runner needs neither Hex nor dependencies.
-version=$(mix run --no-start --no-compile --no-deps-check -e 'IO.puts(Mix.Project.config()[:version])')
+# Read from the source line, because Mix refuses to load the project on a runner without Hex.
+version=$(sed -n 's/^  @version "\(.*\)"$/\1/p' mix.exs)
 
 case "$version" in
   [0-9]*.[0-9]*.[0-9]*) ;;
