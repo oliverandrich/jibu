@@ -67,6 +67,27 @@ Jibu.Tools.run(client, body, max_iterations: 4)
 
 Reaching the cap returns `{:error, %Jibu.Error{type: "max_iterations"}}`.
 
+## Errors in the loop
+
+Every error of `run/3` carries the conversation so far in `error.messages`.
+
+After a failed request, `messages` is the conversation that request sent.
+This holds for API errors, transport errors and stream errors.
+Pass it as the body's `messages` to send that request again.
+The new call starts with a fresh `:max_iterations`.
+
+```elixir
+case Jibu.Tools.run(client, body) do
+  {:ok, response, messages} -> {response, messages}
+  {:error, %Jibu.Error{type: "overloaded_error", messages: messages}} -> Jibu.Tools.run(client, %{body | messages: messages})
+  {:error, error} -> raise error
+end
+```
+
+After `"max_iterations"`, `messages` ends with the last assistant turn.
+If that turn asks for tools, they did not run, and the conversation does not resume as it is.
+If it is a `pause_turn`, sending the conversation again continues the turn.
+
 ## Concurrency
 
 The tools of one turn run one after another in the calling process by default.

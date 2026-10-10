@@ -9,6 +9,8 @@ defmodule Jibu.Error do
   `status` and `request_id` are `nil` when no HTTP response exists.
   `retry_after` is in milliseconds. `reason` holds the underlying exception of a transport error.
   `body` is the decoded response body, if any.
+  `messages` is set only by `Jibu.Tools.run/3`: the conversation of the failed request, or the
+  conversation when the loop stopped at `:max_iterations`. `inspect/1` leaves it out.
   """
 
   @type t :: %__MODULE__{
@@ -18,10 +20,13 @@ defmodule Jibu.Error do
           request_id: String.t() | nil,
           retry_after: non_neg_integer() | nil,
           reason: Exception.t() | nil,
-          body: term()
+          body: term(),
+          messages: [map()] | nil
         }
 
-  defexception [:type, :message, :status, :request_id, :retry_after, :reason, :body]
+  # A conversation can be large and hold user data, so logs of an error leave it out.
+  @derive {Inspect, except: [:messages]}
+  defexception [:type, :message, :status, :request_id, :retry_after, :reason, :body, :messages]
 
   @doc false
   def from_response(%Req.Response{status: status} = response) do

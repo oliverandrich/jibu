@@ -432,8 +432,44 @@ defmodule Jibu.ToolsTest do
       messages: [%{role: "user", content: "x"}]
     }
 
-    assert {:error, %Error{type: "max_iterations"}} =
+    assert {:error, %Error{type: "max_iterations", messages: messages}} =
              Tools.run(client(__MODULE__), body, max_iterations: 2)
+
+    # The last assistant turn asks for tools that did not run.
+    assert [_user, _assistant, %{role: "user"}, %{role: "assistant", content: content}] = messages
+    assert [%{"type" => "tool_use", "id" => "t1"}] = content
+  end
+
+  test "an API error mid-loop carries the conversation of the failed request" do
+    script([reply([tool_use("t1", "weather", %{})], "tool_use")])
+    Req.Test.expect(__MODULE__, &api_error(&1, 529, "overloaded_error"))
+
+    body = %{
+      tools: [weather_tool(fn _input -> {:ok, "sunny"} end)],
+      messages: [%{role: "user", content: "x"}]
+    }
+
+    assert {:error, %Error{type: "overloaded_error", messages: messages}} =
+             Tools.run(client(__MODULE__), body)
+
+    assert [
+             %{role: "user", content: "x"},
+             %{role: "assistant"},
+             %{role: "user", content: results}
+           ] =
+             messages
+
+    assert [%{type: "tool_result", tool_use_id: "t1", content: "sunny"}] = results
+  end
+
+  test "inspecting a loop error leaves out the conversation" do
+    error = %Error{
+      type: "max_iterations",
+      message: "cap",
+      messages: [%{role: "user", content: "secret"}]
+    }
+
+    refute inspect(error) =~ "secret"
   end
 
   test "does not run tools whose results the iteration cap would discard" do

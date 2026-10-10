@@ -15,6 +15,7 @@ They page forward only and reject `:before_id`.
 | `retry_after` | Delay suggested by the API, in milliseconds |
 | `reason` | The underlying exception of a transport error |
 | `body` | The decoded response body |
+| `messages` | Set by `Jibu.Tools.run/3`: the conversation of the failed request or at the iteration cap |
 
 Jibu's own types:
 

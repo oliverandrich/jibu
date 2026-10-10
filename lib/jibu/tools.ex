@@ -106,19 +106,24 @@ defmodule Jibu.Tools do
     loop(send, execute, messages, Keyword.get(opts, :max_iterations, 10))
   end
 
-  defp loop(_send, _execute, _messages, 0), do: max_iterations()
+  defp loop(_send, _execute, messages, 0), do: max_iterations(messages)
 
   defp loop(send, execute, messages, left) do
-    with {:ok, response} <- send.(messages) do
-      messages = messages ++ [%{role: "assistant", content: replayable(response.content)}]
-      continue(response, send, execute, messages, left - 1)
+    case send.(messages) do
+      {:ok, response} ->
+        messages = messages ++ [%{role: "assistant", content: replayable(response.content)}]
+        continue(response, send, execute, messages, left - 1)
+
+      # The messages of the failed request resume the loop where it stopped.
+      {:error, error} ->
+        {:error, %{error | messages: messages}}
     end
   end
 
   # With no request left, tools do not run: their results could never be sent.
-  defp continue(%Response{stop_reason: reason}, _send, _execute, _messages, 0)
+  defp continue(%Response{stop_reason: reason}, _send, _execute, messages, 0)
        when reason in ["tool_use", "pause_turn"],
-       do: max_iterations()
+       do: max_iterations(messages)
 
   defp continue(%Response{stop_reason: "tool_use"} = response, send, execute, messages, left) do
     results = execute.(for %{"type" => "tool_use"} = call <- response.content, do: call)
@@ -130,8 +135,9 @@ defmodule Jibu.Tools do
 
   defp continue(response, _send, _execute, messages, _left), do: {:ok, response, messages}
 
-  defp max_iterations do
-    {:error, %Error{type: "max_iterations", message: "the tool loop reached :max_iterations"}}
+  defp max_iterations(messages) do
+    message = "the tool loop reached :max_iterations"
+    {:error, %Error{type: "max_iterations", message: message, messages: messages}}
   end
 
   # Without concurrency or timeout, tools run in the caller and share its process.
