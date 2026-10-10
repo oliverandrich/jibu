@@ -41,6 +41,68 @@ defmodule Jibu.TestHelpers do
     for event <- events, into: "", do: "event: #{event["type"]}\ndata: #{JSON.encode!(event)}\n\n"
   end
 
+  @doc """
+  The stream events that deliver `message`. Text arrives as one delta, tool input as one JSON delta.
+  A string input is sent as raw JSON, so it may be invalid.
+  """
+  def stream_events(message) do
+    blocks =
+      message
+      |> Map.get("content", [])
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {block, index} -> block_events(block, index) end)
+
+    start = Map.merge(message, %{"content" => [], "stop_reason" => nil})
+
+    [%{"type" => "message_start", "message" => start}] ++
+      blocks ++
+      [
+        %{"type" => "message_delta", "delta" => %{"stop_reason" => message["stop_reason"]}},
+        %{"type" => "message_stop"}
+      ]
+  end
+
+  defp block_events(%{"type" => "text", "text" => text} = block, index) do
+    [
+      %{
+        "type" => "content_block_start",
+        "index" => index,
+        "content_block" => %{block | "text" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => index,
+        "delta" => %{"type" => "text_delta", "text" => text}
+      },
+      %{"type" => "content_block_stop", "index" => index}
+    ]
+  end
+
+  defp block_events(%{"input" => input} = block, index) do
+    json = if is_binary(input), do: input, else: JSON.encode!(input)
+
+    [
+      %{
+        "type" => "content_block_start",
+        "index" => index,
+        "content_block" => %{block | "input" => %{}}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => index,
+        "delta" => %{"type" => "input_json_delta", "partial_json" => json}
+      },
+      %{"type" => "content_block_stop", "index" => index}
+    ]
+  end
+
+  defp block_events(block, index) do
+    [
+      %{"type" => "content_block_start", "index" => index, "content_block" => block},
+      %{"type" => "content_block_stop", "index" => index}
+    ]
+  end
+
   @doc "Asserts that the raw request body is the JSON encoding of `body`."
   def assert_sent_body(raw, body),
     do: assert(JSON.decode!(raw) == JSON.decode!(JSON.encode!(body)))

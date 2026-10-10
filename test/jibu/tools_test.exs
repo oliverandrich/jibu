@@ -13,14 +13,36 @@ defmodule Jibu.ToolsTest do
   defp reply(content, stop_reason), do: %{"content" => content, "stop_reason" => stop_reason}
 
   # Answers each request with the next reply and reports every decoded request body.
-  defp script(replies) do
+  # `respond` sends a reply as JSON or as an event stream.
+  defp script(replies, respond \\ &Req.Test.json/2) do
     test_pid = self()
 
     for reply <- replies do
       Req.Test.expect(__MODULE__, fn conn ->
         send(test_pid, {:body, JSON.decode!(Req.Test.raw_body(conn))})
-        Req.Test.json(conn, reply)
+        respond.(conn, reply)
       end)
+    end
+  end
+
+  defp stream_script(replies), do: script(replies, &respond_stream/2)
+
+  defp respond_stream(conn, reply) do
+    conn
+    |> Plug.Conn.put_resp_content_type("text/event-stream")
+    |> Plug.Conn.send_resp(200, sse(stream_events(reply)))
+  end
+
+  defp forward do
+    test_pid = self()
+    fn event -> send(test_pid, {:event, event}) end
+  end
+
+  defp received_event_types(acc \\ []) do
+    receive do
+      {:event, %{"type" => type}} -> received_event_types([type | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 
@@ -258,6 +280,96 @@ defmodule Jibu.ToolsTest do
 
     assert {:ok, _response, _messages} = Tools.run(client(__MODULE__), body, tool_timeout: 1000)
     assert [%{"content" => "false"}] = sent_results()
+  end
+
+  test "on_event streams every turn and passes the events of all turns" do
+    first = [
+      %{"type" => "text", "text" => "Checking"},
+      tool_use("t1", "weather", %{"city" => "Rom"})
+    ]
+
+    stream_script([
+      reply(first, "tool_use"),
+      reply([%{"type" => "text", "text" => "Done"}], "end_turn")
+    ])
+
+    tool = weather_tool(fn %{"city" => city} -> {:ok, "sunny in #{city}"} end)
+    body = %{tools: [tool], messages: [%{role: "user", content: "Weather?"}]}
+
+    assert {:ok, response, messages} = Tools.run(client(__MODULE__), body, on_event: forward())
+    assert Response.text(response) == "Done"
+    assert length(messages) == 4
+
+    assert_received {:body, %{"stream" => true}}
+    assert_received {:body, %{"stream" => true} = second}
+    assert [_user, %{"content" => ^first}, results] = second["messages"]
+    assert [%{"tool_use_id" => "t1", "content" => "sunny in Rom"}] = results["content"]
+
+    types = received_event_types()
+    assert Enum.count(types, &(&1 == "message_start")) == 2
+    assert List.last(types) == "message_stop"
+  end
+
+  test "a prompt takes on_event as a loop option" do
+    stream_script([reply([%{"type" => "text", "text" => "Hi"}], "end_turn")])
+
+    assert {:ok, _response, _messages} =
+             Tools.run(client(__MODULE__), "x", tools: [], on_event: fn _event -> :ok end)
+
+    assert_received {:body, first}
+    assert first["stream"] == true
+    refute Map.has_key?(first, "on_event")
+  end
+
+  test "a tool input that is not valid JSON returns an error result without running the tool" do
+    test_pid = self()
+
+    calls = [
+      tool_use("t1", "weather", ~s({"city": "Ber)),
+      tool_use("t2", "missing", ~s({"city": "Ber))
+    ]
+
+    stream_script([reply(calls, "tool_use"), reply([], "end_turn")])
+
+    tool =
+      weather_tool(fn _input ->
+        send(test_pid, :ran)
+        {:ok, "x"}
+      end)
+
+    body = %{tools: [tool], messages: [%{role: "user", content: "x"}]}
+
+    assert {:ok, _response, _messages} =
+             Tools.run(client(__MODULE__), body, on_event: fn _event -> :ok end)
+
+    assert_received {:body, _first}
+    assert_received {:body, second}
+    assert [_user, %{"content" => assistant}, %{"content" => results}] = second["messages"]
+
+    # The API requires an object as tool input, so the replayed turn carries an empty one.
+    assert [%{"id" => "t1", "input" => %{}}, %{"id" => "t2", "input" => %{}}] = assistant
+
+    assert [
+             %{
+               "tool_use_id" => "t1",
+               "is_error" => true,
+               "content" => "the tool input is not valid JSON"
+             },
+             %{"tool_use_id" => "t2", "is_error" => true, "content" => "unknown tool: missing"}
+           ] = results
+
+    refute_received :ran
+  end
+
+  test "on_event: nil sends the turns without streaming" do
+    script([reply([%{"type" => "text", "text" => "Hi"}], "end_turn")])
+
+    assert {:ok, response, _messages} =
+             Tools.run(client(__MODULE__), %{messages: []}, on_event: nil)
+
+    assert Response.text(response) == "Hi"
+    assert_received {:body, first}
+    refute Map.has_key?(first, "stream")
   end
 
   test "a failing, raising or unknown tool returns an error result to the model" do

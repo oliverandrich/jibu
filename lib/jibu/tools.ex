@@ -56,6 +56,8 @@ defmodule Jibu.Tools do
     * `:max_concurrency` - maximum number of tools of one turn that run at once, default `1`.
     * `:tool_timeout` - milliseconds a tool may run, default `:infinity`.
       A tool that exceeds it is killed and returns an error result.
+    * `:on_event` - a function that receives every stream event of every turn.
+      Each turn then goes through `Jibu.stream/3`.
 
   With `:max_concurrency` above `1` or a finite `:tool_timeout`, each tool runs in its own task.
   """
@@ -69,7 +71,7 @@ defmodule Jibu.Tools do
     end
 
     {loop_opts, prompt_opts} =
-      Keyword.split(opts, [:max_iterations, :max_concurrency, :tool_timeout])
+      Keyword.split(opts, [:max_iterations, :max_concurrency, :tool_timeout, :on_event])
 
     run(client, Prompt.body(prompt, prompt_opts), loop_opts)
   end
@@ -86,7 +88,13 @@ defmodule Jibu.Tools do
         do: body,
         else: Map.put(body, tools_key, Enum.map(tools, &Map.drop(&1, [:run, "run"])))
 
-    send = fn messages -> Jibu.messages(client, Map.put(body, messages_key, messages)) end
+    request =
+      case Keyword.get(opts, :on_event) do
+        nil -> &Jibu.messages/2
+        on_event -> &Jibu.stream(&1, &2, on_event)
+      end
+
+    send = fn messages -> request.(client, Map.put(body, messages_key, messages)) end
 
     execute =
       executor(
@@ -102,7 +110,7 @@ defmodule Jibu.Tools do
 
   defp loop(send, execute, messages, left) do
     with {:ok, response} <- send.(messages) do
-      messages = messages ++ [%{role: "assistant", content: response.content}]
+      messages = messages ++ [%{role: "assistant", content: replayable(response.content)}]
       continue(response, send, execute, messages, left - 1)
     end
   end
@@ -149,8 +157,18 @@ defmodule Jibu.Tools do
     end
   end
 
+  # A streamed tool input that does not decode stays a string. The API accepts only an object
+  # in a replayed turn, so the string becomes an empty object. The tool result reports the error.
+  defp replayable(content) do
+    Enum.map(content, fn
+      %{"input" => input} = block when is_binary(input) -> %{block | "input" => %{}}
+      block -> block
+    end)
+  end
+
   defp outcome(%{"name" => name, "input" => input}, runners) do
     case Map.fetch(runners, name) do
+      {:ok, _run} when is_binary(input) -> {:error, "the tool input is not valid JSON"}
       {:ok, run} -> invoke(run, input)
       :error -> {:error, "unknown tool: #{name}"}
     end

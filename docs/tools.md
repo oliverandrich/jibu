@@ -94,6 +94,33 @@ Side effects it started may be left incomplete.
 A finite timeout runs each tool in its own task, also with `max_concurrency: 1`.
 The notes under [Concurrency](#concurrency) on processes, exits and throws then apply.
 
+## Streaming
+
+`:on_event` streams every turn through `Jibu.stream/3`.
+The function receives all events of all turns in order. Each turn starts with its own `message_start`.
+
+```elixir
+pid = self()
+
+weather = %{
+  name: "weather",
+  description: "Current weather for a city",
+  input_schema: %{type: "object", properties: %{city: %{type: "string"}}, required: ["city"]},
+  eager_input_streaming: true,
+  run: fn %{"city" => city} -> {:ok, "sunny in " <> city} end
+}
+
+{:ok, response, messages} =
+  Jibu.Tools.run(client, "Weather in Berlin?", tools: [weather], on_event: &send(pid, {:claude, &1}))
+```
+
+`eager_input_streaming: true` streams large tool inputs as the model writes them.
+Jibu sends it unchanged and does not set it for you.
+The API does not validate such input. Input that is not valid JSON runs no tool.
+The model receives `"the tool input is not valid JSON"` as an error result instead.
+The API accepts only an object as input in a replayed turn.
+`messages` therefore holds `%{}` as the input of that tool call.
+
 ## Server tools
 
 Tools without `:run`, such as web search, go to the API unchanged.
