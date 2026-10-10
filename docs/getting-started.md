@@ -23,11 +23,54 @@ Beta features need their names in `:betas`:
 client = Jibu.new(betas: ["some-beta-2026-01-01"])
 ```
 
-Every other option goes to `Req.new/1`, for example `:receive_timeout`.
+Set the model and `max_tokens` once on the client:
 
-## Send a message
+```elixir
+client = Jibu.new(model: "claude-opus-5-5", max_tokens: 1024)
+```
 
-The body is a plain map. Jibu sends it unchanged.
+`Jibu.messages/2` and `Jibu.count_tokens/2` apply these defaults. A field set in the body wins.
+Batch requests do not get them.
+`:defaults` takes further fields, for example `defaults: %{temperature: 0}`.
+Every other option goes to `Req.merge/2`, for example `:receive_timeout`.
+
+## Ask a question
+
+`Jibu.ask/3` sends a prompt and returns the text of the answer.
+
+```elixir
+{:ok, text} = Jibu.ask(client, "Name three rivers in Germany.")
+```
+
+The prompt is a string or a list of content blocks, see [Images, documents and files](files.md).
+These shortcuts have a fixed meaning:
+
+- `system:` sets the system prompt. `cache: true` marks it for [prompt caching](prompt-caching.md).
+- `effort:` sets `output_config.effort`.
+- `messages:` passes an earlier conversation. The prompt is appended to it.
+
+Every other keyword becomes a body field unchanged.
+
+```elixir
+{:ok, text} =
+  Jibu.ask(client, "And the longest of them?",
+    system: "Answer in one sentence.",
+    effort: :low,
+    temperature: 0,
+    messages: [
+      %{role: "user", content: "Name three rivers in Germany."},
+      %{role: "assistant", content: "Rhine, Elbe and Danube."}
+    ]
+  )
+```
+
+A refusal and output cut off at `max_tokens` return `{:error, %Jibu.Error{}}`.
+So does a turn that waits for a tool. Use [Tools](tools.md) for those.
+
+## Send a full request
+
+`Jibu.messages/2` takes the whole body as a plain map and returns the whole response.
+Jibu sends the body unchanged, apart from the client defaults.
 
 ```elixir
 {:ok, response} =
@@ -55,6 +98,7 @@ Jibu.Response.text(response)
 ## Set the effort
 
 `output_config.effort` trades depth of reasoning against tokens and latency.
+With `ask/3` and `extract/4`, the `effort:` shortcut sets it.
 
 ```elixir
 Jibu.messages(client, %{
@@ -70,6 +114,7 @@ Use `"low"` for classification and short extraction. Measure before raising it.
 ## Count tokens
 
 `Jibu.count_tokens/2` takes the same body as `Jibu.messages/2`. The API does not bill it.
+Of the client defaults, only the model applies here.
 
 ```elixir
 {:ok, %{"input_tokens" => count}} = Jibu.count_tokens(client, body)

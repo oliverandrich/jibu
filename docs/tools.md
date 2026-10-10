@@ -37,6 +37,13 @@ It returns `{:ok, content}` or `{:error, content}`.
   })
 ```
 
+A prompt works as well, with the shortcuts of `Jibu.ask/3`:
+
+```elixir
+{:ok, response, messages} =
+  Jibu.Tools.run(client, "What did I do on Monday?", tools: [calendar], effort: :low)
+```
+
 The loop sends the request and runs every requested tool.
 It returns all results of one turn in a single user message.
 It repeats until `stop_reason` is neither `"tool_use"` nor `"pause_turn"`.

@@ -4,7 +4,8 @@ defmodule Jibu.Error do
 
   `type` is the API's `error.type` for API errors, for example `"rate_limit_error"`.
   Jibu's own types are `"transport_error"`, `"http_error"`, `"refusal"`, `"max_tokens"`,
-  `"context_window_exceeded"`, `"invalid_json"` and `"max_iterations"`.
+  `"context_window_exceeded"`, `"tool_use"`, `"pause_turn"`, `"invalid_json"` and
+  `"max_iterations"`.
   `status` and `request_id` are `nil` when no HTTP response exists.
   `retry_after` is in milliseconds. `reason` holds the underlying exception of a transport error.
   `body` is the decoded response body, if any.

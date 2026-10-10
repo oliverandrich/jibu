@@ -19,10 +19,12 @@ defmodule Jibu.Response do
 
   defstruct [:id, :model, :stop_reason, :usage, content: [], body: %{}]
 
-  # Stop reasons that leave no usable structured output, with the error each one returns.
+  # Stop reasons that leave no complete answer, with the error each one returns.
   @stop_errors %{
     "refusal" => {"refusal", "the model refused the request"},
     "max_tokens" => {"max_tokens", "the output reached max_tokens"},
+    "tool_use" => {"tool_use", "the model asked for a tool; use Jibu.Tools.run/3"},
+    "pause_turn" => {"pause_turn", "the model paused a long turn; use Jibu.Tools.run/3"},
     "model_context_window_exceeded" =>
       {"context_window_exceeded", "the output reached the context window"}
   }
@@ -55,12 +57,23 @@ defmodule Jibu.Response do
   See the [structured output guide](structured-output.md).
   """
   @spec json(t()) :: {:ok, term()} | {:error, Error.t()}
-  def json(%__MODULE__{stop_reason: reason} = response) when is_map_key(@stop_errors, reason) do
-    {type, message} = @stop_errors[reason]
-    {:error, %Error{type: type, message: message, body: response.body}}
+  def json(%__MODULE__{} = response) do
+    case stop_error(response) do
+      nil -> decode(response)
+      error -> {:error, error}
+    end
   end
 
-  def json(%__MODULE__{} = response) do
+  # The error for a stop reason that leaves no usable answer, or nil.
+  @doc false
+  def stop_error(%__MODULE__{stop_reason: reason} = response) do
+    case @stop_errors do
+      %{^reason => {type, message}} -> %Error{type: type, message: message, body: response.body}
+      _other -> nil
+    end
+  end
+
+  defp decode(response) do
     case JSON.decode(text(response)) do
       {:ok, decoded} ->
         {:ok, decoded}

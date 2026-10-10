@@ -20,3 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `Jibu.Batches` creates, retrieves, lists, cancels and deletes batches and decodes their results.
 - `Jibu.Tools.run/3` runs a tool-use conversation with local `:run` functions until the model stops.
 - Guides for getting started, structured output, prompt caching, files, batches, tools, and errors with telemetry.
+- Client defaults for `:model`, `:max_tokens` and further body fields.
+- `Jibu.ask/3` and `Jibu.extract/4` with the shortcuts `system:`, `cache:`, `effort:` and `messages:`.
+- `ask/3`, `extract/4` and `Response.json/1` return an error for turns that wait for tools.
+- `Jibu.Tools.run/3` accepts a prompt with the same shortcuts.

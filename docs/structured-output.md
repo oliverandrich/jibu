@@ -1,7 +1,6 @@
 # Structured output
 
 Structured output constrains the reply to a JSON schema.
-Set it in `output_config.format`.
 
 ```elixir
 schema = %{
@@ -15,6 +14,17 @@ schema = %{
   additionalProperties: false
 }
 
+{:ok, booking} = Jibu.extract(client, "Workshop with MRV, 9 to 11:30.", schema, effort: :low)
+```
+
+`Jibu.extract/4` takes the shortcuts of `Jibu.ask/3` and returns the decoded JSON.
+
+## Use the full request
+
+`Jibu.messages/2` gives you the whole response, for example to read `usage`.
+Set the format in `output_config.format` yourself:
+
+```elixir
 {:ok, response} =
   Jibu.messages(client, %{
     model: "claude-opus-5-5",

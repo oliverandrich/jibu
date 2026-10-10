@@ -37,10 +37,14 @@ defmodule Jibu.Tools do
 
   alias Jibu.Body
   alias Jibu.Error
+  alias Jibu.Prompt
   alias Jibu.Response
 
   @doc """
   Runs the loop.
+
+  The second argument is a request body or a prompt. A prompt takes the shortcuts of
+  `Jibu.ask/3`, and `tools:` goes into the body like any other keyword.
 
   Returns `{:ok, response, messages}` for the first response whose `stop_reason` is neither
   `"tool_use"` nor `"pause_turn"`. Check that `stop_reason` for `"refusal"` or `"max_tokens"`
@@ -50,9 +54,20 @@ defmodule Jibu.Tools do
 
     * `:max_iterations` - maximum number of requests, default `10`.
   """
-  @spec run(Req.Request.t(), map(), keyword()) ::
+  @spec run(Req.Request.t(), map() | String.t() | [map()], keyword()) ::
           {:ok, Response.t(), [map()]} | {:error, Error.t()}
-  def run(client, body, opts \\ []) when is_map(body) do
+  def run(client, body_or_prompt, opts \\ [])
+
+  def run(client, prompt, opts) when is_binary(prompt) or is_list(prompt) do
+    if prompt != [] and Keyword.keyword?(prompt) do
+      raise ArgumentError, "pass a request body as a map, not a keyword list"
+    end
+
+    {loop_opts, prompt_opts} = Keyword.split(opts, [:max_iterations])
+    run(client, Prompt.body(prompt, prompt_opts), loop_opts)
+  end
+
+  def run(client, body, opts) when is_map(body) do
     {tools_key, tools} = Body.fetch(body, :tools, [])
     {messages_key, messages} = Body.fetch(body, :messages, [])
 
