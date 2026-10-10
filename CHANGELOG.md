@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-10
+
+### Changed
+
+- The README shows full requests with `Jibu.messages/2` and lists every module with its guide.
+- The package links to the changelog on jibu.hexdocs.pm.
+
 ## [0.1.0] - 2026-10-10
 
 ### Added
@@ -27,5 +34,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `ask/3`, `extract/4` and `Response.json/1` return an error for turns that wait for tools.
 - `Jibu.Tools.run/3` accepts a prompt with the same shortcuts.
 
-[Unreleased]: https://github.com/oliverandrich/jibu/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/oliverandrich/jibu/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/oliverandrich/jibu/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/oliverandrich/jibu/releases/tag/v0.1.0

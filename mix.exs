@@ -1,7 +1,7 @@
 defmodule Jibu.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/oliverandrich/jibu"
 
   def project do
@@ -55,7 +55,7 @@ defmodule Jibu.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url, "Changelog" => "https://hexdocs.pm/jibu/changelog.html"},
+      links: %{"GitHub" => @source_url, "Changelog" => "https://jibu.hexdocs.pm/changelog.html"},
       files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end

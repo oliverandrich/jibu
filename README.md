@@ -19,7 +19,15 @@ New API fields therefore work without a new release.
 
 Jibu is not affiliated with or endorsed by Anthropic.
 
-## Usage
+## Installation
+
+Add Jibu to the dependencies in `mix.exs`:
+
+```elixir
+{:jibu, "~> 0.1"}
+```
+
+## Quick start
 
 ```elixir
 client = Jibu.new(model: "claude-opus-5-5", max_tokens: 1024)
@@ -29,16 +37,41 @@ client = Jibu.new(model: "claude-opus-5-5", max_tokens: 1024)
 {:ok, booking} = Jibu.extract(client, "Workshop with MRV, 9 to 11:30.", schema)
 ```
 
-`Jibu.messages/2` takes a full request body and sends it unchanged.
-In tests, pass `plug: {Req.Test, MyStub}` to `Jibu.new/1`.
+Without `:api_key`, Jibu reads `ANTHROPIC_API_KEY` from the environment.
 
-## Installation
+## Full requests
 
-Add Jibu to the dependencies in `mix.exs`:
+`Jibu.messages/2` takes the whole request body as a map and returns the whole response.
+Jibu sends the body unchanged, so every field of the API works, including new ones.
 
 ```elixir
-{:jibu, "~> 0.1"}
+{:ok, response} =
+  Jibu.messages(client, %{
+    system: [%{type: "text", text: "You sort bookings.", cache_control: %{type: "ephemeral"}}],
+    messages: [%{role: "user", content: "Workshop with MRV, 9 to 11:30."}],
+    output_config: %{effort: "low"}
+  })
+
+Jibu.Response.text(response)
+response.stop_reason
+response.usage
 ```
+
+The client defaults fill in `model` and `max_tokens`. A field in the body wins over its default.
+
+## More of the API
+
+| Module | Covers | Guide |
+| --- | --- | --- |
+| `Jibu` | `count_tokens/2` | [Getting started](docs/getting-started.md) |
+| `Jibu.Models` | Listing and retrieving models | [Getting started](docs/getting-started.md) |
+| `Jibu.Content` | Image and document blocks from files, binaries or file ids | [Files](docs/files.md) |
+| `Jibu.Files` | Upload, list, download and delete files | [Files](docs/files.md) |
+| `Jibu.Batches` | Message Batches at half price | [Batches](docs/batches.md) |
+| `Jibu.Tools` | A tool-use loop with local functions | [Tools](docs/tools.md) |
+| `Jibu.Error` | Error types, retries and telemetry | [Errors](docs/errors.md) |
+
+In tests, pass `plug: {Req.Test, MyStub}` to `Jibu.new/1`. No request then leaves the test.
 
 ## Documentation
 
