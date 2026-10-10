@@ -2,9 +2,11 @@
 
 ## Errors
 
-Every function returns `{:ok, result}` or `{:error, %Jibu.Error{}}`.
-The `stream/2` functions raise `Jibu.Error`, because a stream cannot return an error tuple.
+Every function except the paging streams returns `{:ok, result}` or `{:error, %Jibu.Error{}}`.
+`Jibu.Models.stream/2`, `Jibu.Files.stream/2` and `Jibu.Batches.stream/2` page through lists lazily.
+They raise `Jibu.Error`, because a lazy stream cannot return an error tuple.
 They page forward only and reject `:before_id`.
+`Jibu.stream/3` streams a response and returns a tuple like every other function.
 
 | Field | Meaning |
 | --- | --- |
