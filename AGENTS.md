@@ -76,4 +76,5 @@ to `AGENTS.md` and do not maintain another set of rules.
 ## Releases
 
 Versions follow SemVer. Record every user-visible change in `CHANGELOG.md` under `Unreleased`.
+A release renames that section to the version and date. `release-check` refuses a leftover `Unreleased`.
 Publish to Hex only when explicitly requested.

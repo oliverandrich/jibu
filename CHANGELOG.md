@@ -3,8 +3,6 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [SemVer](https://semver.org/).
 
-## [Unreleased]
-
 ## [0.1.1] - 2026-10-10
 
 ### Changed
@@ -34,6 +32,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `ask/3`, `extract/4` and `Response.json/1` return an error for turns that wait for tools.
 - `Jibu.Tools.run/3` accepts a prompt with the same shortcuts.
 
-[Unreleased]: https://github.com/oliverandrich/jibu/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/oliverandrich/jibu/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/oliverandrich/jibu/releases/tag/v0.1.0

@@ -73,6 +73,9 @@ remote=$(printf '%s\n' "$refs" | tail -n 1 | cut -f1)
 
 grep -qF "## [$version]" CHANGELOG.md || fail "CHANGELOG.md has no \"## [$version]\" section"
 
+# A released changelog has no pending section; rename it to the version instead.
+! grep -qF "## [Unreleased]" CHANGELOG.md || fail "CHANGELOG.md still has an Unreleased section"
+
 echo "release-check: $tag, on origin, with a changelog section"
 '''
 
