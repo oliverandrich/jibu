@@ -1,0 +1,41 @@
+[tools]
+elixir = "1.20.4-otp-29"
+erlang = "29.1.1"
+# Also pinned in the `version:` input of zizmor-action in .github/workflows/ci.yml.
+# Dependabot does not read this file, so the two move by hand, together.
+zizmor = "1.30.1"
+
+# `mix docs` runs here rather than in `mix precommit`: ex_doc is a dev dependency and the alias runs in test.
+[tasks.check]
+description = "Workflow audit, style, compile, tests and docs"
+run = ["zizmor .github/", "mix precommit", "MIX_ENV=dev mix docs --warnings-as-errors"]
+
+# What the floor CI leg runs: compatibility only, no style judgement.
+[tasks.build-and-test]
+description = "Compile without warnings and run the tests"
+run = "mix build_and_test"
+
+[tasks.test]
+description = "Run the test suite"
+run = "mix test"
+
+[tasks.format]
+description = "Format the code"
+run = "mix format"
+
+[tasks.credo]
+description = "Run the Credo lint the gate runs"
+run = ["mix compile --warnings-as-errors", "mix credo --strict"]
+
+[tasks.docs]
+description = "Build the documentation and serve it at http://127.0.0.1:8000 (requires Python 3)"
+env = { MIX_ENV = "dev" }
+run = ["mix docs --warnings-as-errors", "python3 -m http.server 8000 --bind 127.0.0.1 --directory doc"]
+
+[tasks.audit]
+description = "Audit dependencies for advisories and retired packages"
+run = ["mix deps.audit", "mix hex.audit"]
+
+[tasks.beans]
+description = "List the live backlog (everything not completed or scrapped)"
+run = "beans list --no-status completed --no-status scrapped"

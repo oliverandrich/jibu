@@ -1,0 +1,29 @@
+# SHA pins never update on their own; Dependabot keeps them current.
+# The cooldown follows zizmor's `dependabot-cooldown` audit.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: mix
+    directory: /
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      hex:
+        update-types:
+          - minor
+          - patch
