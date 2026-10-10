@@ -61,7 +61,7 @@ defmodule Jibu.MixProject do
   end
 
   @guides ~w(docs/getting-started.md docs/structured-output.md docs/prompt-caching.md docs/files.md
-             docs/batches.md docs/tools.md docs/errors.md)
+             docs/batches.md docs/tools.md docs/streaming.md docs/errors.md)
 
   defp docs do
     [

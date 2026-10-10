@@ -103,6 +103,30 @@ defmodule Jibu.GuidesTest do
     route(conn, conn.method, conn.path_info, body)
   end
 
+  defp route(conn, "POST", ["v1", "messages"], %{"stream" => true}) do
+    %{"content" => [%{"text" => text}]} = message = text_message("Hello")
+
+    events = [
+      %{"type" => "message_start", "message" => %{message | "content" => []}},
+      %{
+        "type" => "content_block_start",
+        "index" => 0,
+        "content_block" => %{"type" => "text", "text" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "text_delta", "text" => text}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{"type" => "message_stop"}
+    ]
+
+    conn
+    |> Plug.Conn.put_resp_content_type("text/event-stream")
+    |> Plug.Conn.send_resp(200, Jibu.TestHelpers.sse(events))
+  end
+
   defp route(conn, "POST", ["v1", "messages"], body), do: Req.Test.json(conn, message(body))
 
   defp route(conn, "POST", ["v1", "messages", "count_tokens"], _body),

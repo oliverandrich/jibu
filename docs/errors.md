@@ -25,7 +25,8 @@ Jibu's own types:
 | `"max_tokens"` | `Jibu.Response.json/1` on output cut off at `max_tokens` |
 | `"context_window_exceeded"` | `Jibu.Response.json/1` on output cut off at the context window |
 | `"tool_use"`, `"pause_turn"` | `ask/3`, `extract/4` or `Jibu.Response.json/1` on a turn that waits for tools |
-| `"invalid_json"` | `Jibu.Response.json/1` on text that is not JSON |
+| `"invalid_json"` | `Jibu.Response.json/1` on text that is not JSON, or stream event data that is not JSON |
+| `"invalid_stream"` | `Jibu.stream/3` got a success response that is not an event stream |
 | `"max_iterations"` | `Jibu.Tools.run/3` reached its request cap |
 
 An error status without a JSON error body gets the type `"http_error"`.

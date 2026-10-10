@@ -20,10 +20,12 @@ defmodule Jibu do
   Start with the [Getting started guide](getting-started.md).
   """
 
+  alias Jibu.Accumulator
   alias Jibu.Body
   alias Jibu.Error
   alias Jibu.Prompt
   alias Jibu.Response
+  alias Jibu.SSE
 
   @base_url "https://api.anthropic.com"
   @api_version "2023-06-01"
@@ -83,6 +85,141 @@ defmodule Jibu do
   end
 
   @doc """
+  Sends a Messages API request as a stream and calls `fun` with each event.
+
+  Jibu sets `stream: true` and sends the body otherwise unchanged.
+  `fun` receives every server-sent event as a decoded map, including `ping` and unknown types.
+  The result is the assembled message as a `Jibu.Response`.
+
+  An `error` event returns `{:error, %Jibu.Error{}}` with the partial message in `body`.
+  Jibu does not retry once events have arrived when `:retry` is a function.
+  See the [streaming guide](streaming.md).
+  """
+  @spec stream(Req.Request.t(), map(), (map() -> any())) ::
+          {:ok, Response.t()} | {:error, Error.t()}
+  def stream(client, body, fun) when is_map(body) and is_function(fun, 1) do
+    {stream_key, _stream} = Body.fetch(body, :stream, nil)
+
+    body =
+      body
+      |> Map.drop([:stream, "stream"])
+      |> Body.put_defaults(defaults(client))
+      |> Map.put(stream_key, true)
+
+    # The into callback and the steps run in the calling process. The process dictionary keeps
+    # the stream state when a transport error drops the response.
+    key = {__MODULE__, :stream, make_ref()}
+
+    client =
+      client
+      |> no_retry_after_events(key)
+      |> Req.Request.append_response_steps(jibu_stream: &finish_stream(&1, key))
+
+    try do
+      case request(client, :post, "/v1/messages", json: body, into: stream_into(fun, key)) do
+        {:ok, message} ->
+          {:ok, Response.new(message)}
+
+        {:error, %Error{type: "transport_error"} = error} ->
+          {:error, %{error | body: partial(key)}}
+
+        {:error, error} ->
+          {:error, error}
+      end
+    after
+      Process.delete(key)
+    end
+  end
+
+  # A retry after streamed events would pass them to `fun` a second time.
+  defp no_retry_after_events(client, key) do
+    case Req.Request.get_option(client, :retry) do
+      retry when is_function(retry, 2) ->
+        Req.Request.put_option(client, :retry, fn request, result ->
+          Process.get(key) == nil and retry.(request, result)
+        end)
+
+      _other ->
+        client
+    end
+  end
+
+  # Error bodies stay raw: `Error.from_response/1` decodes them.
+  defp stream_into(fun, key) do
+    fn {:data, chunk}, {request, response} ->
+      if response.status in 200..299 and event_stream?(response) do
+        state = Process.get(key, {SSE.new(), Accumulator.new(), nil})
+        Process.put(key, stream_chunk(state, chunk, fun, response))
+        {:cont, {request, response}}
+      else
+        {:cont, {request, %{response | body: response.body <> chunk}}}
+      end
+    end
+  end
+
+  defp event_stream?(response) do
+    response
+    |> Req.Response.get_header("content-type")
+    |> Enum.any?(&String.starts_with?(&1, "text/event-stream"))
+  end
+
+  defp stream_chunk({sse, acc, error}, chunk, fun, response) do
+    {events, sse} = SSE.parse(sse, chunk)
+    {acc, error} = Enum.reduce(events, {acc, error}, &stream_event(&1, &2, fun, response))
+    {sse, acc, error}
+  end
+
+  # The API ends a stream after an error event. Anything after the first error is ignored.
+  defp stream_event(_event, {_acc, %Error{}} = state, _fun, _response), do: state
+
+  defp stream_event(%{data: data}, {acc, nil}, fun, response) do
+    case JSON.decode(data) do
+      {:ok, %{"type" => "error"} = event} ->
+        fun.(event)
+        {acc, Error.from_response(%{response | body: event})}
+
+      {:ok, event} ->
+        fun.(event)
+        {Accumulator.add(acc, event), nil}
+
+      {:error, reason} ->
+        message = "the event data is not valid JSON: #{inspect(reason)}"
+        {acc, %{Error.from_response(response) | type: "invalid_json", message: message}}
+    end
+  end
+
+  # Puts the assembled message into the body, so telemetry and errors see it.
+  defp finish_stream({request, %Req.Response{status: status} = response}, key)
+       when status in 200..299 do
+    case Process.get(key) do
+      {_sse, _acc, error} ->
+        message = partial(key)
+        error = error && %{error | body: message}
+
+        {request,
+         response |> Map.put(:body, message) |> Req.Response.put_private(:jibu_error, error)}
+
+      nil ->
+        error = %{
+          Error.from_response(response)
+          | type: "invalid_stream",
+            message: "the response is not an event stream"
+        }
+
+        {request, Req.Response.put_private(response, :jibu_error, error)}
+    end
+  end
+
+  defp finish_stream(request_response, _key), do: request_response
+
+  defp partial(key) do
+    case Process.get(key) do
+      {_sse, acc, _error} -> Accumulator.message(acc)
+      nil -> nil
+    end
+  end
+
+  @doc """
   Counts the input tokens of a Messages API request body. The body is sent unchanged.
   The API does not bill this call.
   """
@@ -136,7 +273,7 @@ defmodule Jibu do
   end
 
   # Shared by every endpoint: runs the request inside a telemetry span and maps failures to
-  # `Jibu.Error`.
+  # `Jibu.Error`. A response step can fail a 2xx response by setting the private `:jibu_error`.
   @doc false
   def request(client, method, path, opts) do
     metadata = %{method: method, path: path, model: Body.get(opts[:json], :model)}
@@ -149,8 +286,13 @@ defmodule Jibu do
 
   defp defaults(client), do: Req.Request.get_private(client, :jibu_defaults, %{})
 
-  defp normalize({:ok, %Req.Response{status: status, body: body}}) when status in 200..299,
-    do: {:ok, body}
+  defp normalize({:ok, %Req.Response{status: status, body: body} = response})
+       when status in 200..299 do
+    case Req.Response.get_private(response, :jibu_error) do
+      nil -> {:ok, body}
+      error -> {:error, error}
+    end
+  end
 
   defp normalize({:ok, %Req.Response{} = response}), do: {:error, Error.from_response(response)}
   defp normalize({:error, exception}), do: {:error, Error.from_exception(exception)}

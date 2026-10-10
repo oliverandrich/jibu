@@ -36,6 +36,11 @@ defmodule Jibu.TestHelpers do
     end)
   end
 
+  @doc "Encodes events as a Server-Sent Events stream, named by their `type`."
+  def sse(events) do
+    for event <- events, into: "", do: "event: #{event["type"]}\ndata: #{JSON.encode!(event)}\n\n"
+  end
+
   @doc "Asserts that the raw request body is the JSON encoding of `body`."
   def assert_sent_body(raw, body),
     do: assert(JSON.decode!(raw) == JSON.decode!(JSON.encode!(body)))

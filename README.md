@@ -14,6 +14,7 @@ New API fields therefore work without a new release.
 - Image and document content, and the Files API
 - Message Batches
 - A tool-use loop with local tool functions
+- Streaming with a function per event and the assembled message
 - Typed errors, retries with `retry-after`, and telemetry
 - Tests through `Req.Test`, without the network
 
@@ -69,6 +70,7 @@ The client defaults fill in `model` and `max_tokens`. A field in the body wins o
 | `Jibu.Files` | Upload, list, download and delete files | [Files](docs/files.md) |
 | `Jibu.Batches` | Message Batches at half price | [Batches](docs/batches.md) |
 | `Jibu.Tools` | A tool-use loop with local functions | [Tools](docs/tools.md) |
+| `Jibu` | `stream/3` for streamed responses | [Streaming](docs/streaming.md) |
 | `Jibu.Error` | Error types, retries and telemetry | [Errors](docs/errors.md) |
 
 In tests, pass `plug: {Req.Test, MyStub}` to `Jibu.new/1`. No request then leaves the test.
@@ -81,6 +83,7 @@ In tests, pass `plug: {Req.Test, MyStub}` to `Jibu.new/1`. No request then leave
 - [Images, documents and files](docs/files.md)
 - [Batches](docs/batches.md)
 - [Tools](docs/tools.md)
+- [Streaming](docs/streaming.md)
 - [Errors, retries and telemetry](docs/errors.md)
 - [Contributing](https://github.com/oliverandrich/jibu/blob/main/CONTRIBUTING.md): development setup, mise commands and checks.
 - [Changelog](CHANGELOG.md)
