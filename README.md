@@ -25,7 +25,7 @@ Jibu is not affiliated with or endorsed by Anthropic.
 Add Jibu to the dependencies in `mix.exs`:
 
 ```elixir
-{:jibu, "~> 0.1"}
+{:jibu, "~> 0.2"}
 ```
 
 ## Quick start

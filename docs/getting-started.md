@@ -5,7 +5,7 @@
 Add Jibu to your dependencies in `mix.exs`:
 
 ```elixir
-{:jibu, "~> 0.1"}
+{:jibu, "~> 0.2"}
 ```
 
 ## Create a client
