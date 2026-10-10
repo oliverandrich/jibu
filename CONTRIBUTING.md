@@ -22,6 +22,8 @@ mise run check
 | `mise run credo` | Compile then strict Credo |
 | `mise run docs` | Build the docs and serve them at http://127.0.0.1:8000 |
 | `mise run audit` | Dependency advisories and retired Hex packages |
+| `mise run release-check` | Verify the version tag, its push to origin and the changelog section |
+| `mise run release` | Publish the tagged version to hex.pm from a local machine |
 | `mise run beans` | List unfinished local Beans tickets |
 
 ## Checks

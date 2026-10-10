@@ -32,9 +32,13 @@ client = Jibu.new(model: "claude-opus-5-5", max_tokens: 1024)
 `Jibu.messages/2` takes a full request body and sends it unchanged.
 In tests, pass `plug: {Req.Test, MyStub}` to `Jibu.new/1`.
 
-## Status
+## Installation
 
-Work in progress towards 0.1. Not yet published on Hex.
+Add Jibu to the dependencies in `mix.exs`:
+
+```elixir
+{:jibu, "~> 0.1"}
+```
 
 ## Documentation
 

@@ -55,7 +55,7 @@ defmodule Jibu.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url},
+      links: %{"GitHub" => @source_url, "Changelog" => "https://hexdocs.pm/jibu/changelog.html"},
       files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end

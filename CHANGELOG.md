@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-10
+
 ### Added
 
 - `Jibu.new/1` builds a `Req.Request` with API key, version header, beta header and Req options.
@@ -24,3 +26,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `Jibu.ask/3` and `Jibu.extract/4` with the shortcuts `system:`, `cache:`, `effort:` and `messages:`.
 - `ask/3`, `extract/4` and `Response.json/1` return an error for turns that wait for tools.
 - `Jibu.Tools.run/3` accepts a prompt with the same shortcuts.
+
+[Unreleased]: https://github.com/oliverandrich/jibu/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/oliverandrich/jibu/releases/tag/v0.1.0

@@ -13,58 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-
-    strategy:
-      # One red leg must not hide the others.
-      fail-fast: false
-      matrix:
-        include:
-          # The pinned pair from mise.toml, running the full gate.
-          - name: check
-          # The floor of the `elixir` requirement in mix.exs. Compatibility only, no style judgement.
-          - name: floor (elixir 1.18)
-            elixir: "1.18"
-            erlang: "27"
-            gate: build-and-test
-
-    env:
-      GATE: ${{ matrix.gate || 'check' }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Pin the toolchain this leg is for
-        if: matrix.elixir
-        env:
-          ELIXIR: ${{ matrix.elixir }}
-          ERLANG: ${{ matrix.erlang }}
-        run: printf '[tools]\nelixir = "%s"\nerlang = "%s"\n' "$ELIXIR" "$ERLANG" > mise.local.toml
-
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          cache_key_prefix: mise-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-
-
-      - name: Fetch dependencies
-        run: |
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get
-
-      - name: Run the gate
-        run: mise run "$GATE"
+  gate:
+    # `./` rather than the `$/` zizmor's `self-repository` audit asks for: actionlint rejects `$/`.
+    uses: ./.github/workflows/gate.yml # zizmor: ignore[self-repository]
 
   zizmor:
     name: zizmor

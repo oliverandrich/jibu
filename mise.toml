@@ -36,6 +36,52 @@ run = ["mix docs --warnings-as-errors", "python3 -m http.server 8000 --bind 127.
 description = "Audit dependencies for advisories and retired packages"
 run = ["mix deps.audit", "mix hex.audit"]
 
+# What must be true before anything reaches hex.pm. The release workflow runs it twice.
+[tasks.release-check]
+description = "Refuse a release that is not exactly what a tag points at"
+run = '''
+set -eu
+
+fail() { echo "$1" >&2; exit 1; }
+
+# Read without compiling, so a fresh runner needs neither Hex nor dependencies.
+version=$(mix run --no-start --no-compile --no-deps-check -e 'IO.puts(Mix.Project.config()[:version])')
+
+case "$version" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) fail "read \"$version\" as the version, which is not one" ;;
+esac
+
+# `mix hex.publish` packs the listed paths from disk, so untracked files under them would ship.
+[ -z "$(git status --porcelain)" ] || fail "the working tree is not clean"
+
+tag="v$version"
+git tag --points-at HEAD | grep -qx "$tag" || fail "HEAD carries no $tag. Tag it first: git tag -a $tag -m $tag"
+
+# A tag-triggered run must be for this version; the GitHub release is named after the pushed tag.
+if [ "${GITHUB_REF_TYPE:-}" = tag ] && [ "${GITHUB_REF_NAME:-}" != "$tag" ]; then
+  fail "the run is for tag ${GITHUB_REF_NAME:-}, but mix.exs declares $tag"
+fi
+
+# The documentation links to the tag on GitHub, so it must exist there and point here.
+# Assigned on its own line so a failed ls-remote stops the script under `set -e`.
+refs=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+# For an annotated tag, the peeled `^{}` line comes last and carries the commit.
+remote=$(printf '%s\n' "$refs" | tail -n 1 | cut -f1)
+[ -n "$remote" ] || fail "$tag is not on origin; push it: git push origin $tag"
+[ "$remote" = "$(git rev-parse HEAD)" ] || fail "origin's $tag points at $remote, not at HEAD"
+
+grep -qF "## [$version]" CHANGELOG.md || fail "CHANGELOG.md has no \"## [$version]\" section"
+
+echo "release-check: $tag, on origin, with a changelog section"
+'''
+
+# Publishing from a laptop. The release workflow is the usual path.
+[tasks.release]
+description = "Publish the tagged version to hex.pm"
+# No `--yes`: the confirmation prompt is the only human gate on this path.
+run = ["mise run release-check", "mise run check", "mix hex.publish"]
+
 [tasks.beans]
 description = "List the live backlog (everything not completed or scrapped)"
 run = "beans list --no-status completed --no-status scrapped"
